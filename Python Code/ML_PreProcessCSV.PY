@@ -1,3 +1,4 @@
+import math as math
 import numpy as np
 import pandas as pd
 from numpy import array
@@ -5,6 +6,7 @@ from numpy import argmax
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeRegressor
 from sklearn import metrics, cross_validation
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -20,11 +22,14 @@ bugsDF = pd.read_csv("data/TFS_ML_Project_v4.csv", sep=",", index_col=0)
 # Collect Valid Rows
 def IsValidRow(x):
     return np.logical_and (
-        np.logical_or (
-            x['Train Data'] == 1,
-            x['Test Data'] == 1
+        np.logical_and (
+            np.logical_or (
+                x['Train Data'] == 1,
+                x['Test Data'] == 1
+            ),
+            x['To Delete'] != 1
         ),
-        x['To Delete'] != 1
+        x['ResolutionDays'] < 100
     )
 
 bugsDF = bugsDF[lambda x: IsValidRow(x)]
@@ -43,36 +48,36 @@ bugsDF['Iteration Release'] = bugsDF['Iteration Path'].apply(lambda x: getVersio
 #print(bugsDF)
 
 inputDF = bugsDF.copy()
-# 1 How Found
-cleanup_nums = {'How Found':{np.nan: 0,
-                                     "Developer Testing" : 1,
-                                     "Manual Testing" : 2,
-                                     "UAT" : 3,
-                                     "Production" : 4}}
+# 1 How Found - Numeric
+cleanup_nums = {'How Found':{np.nan: 5,
+                                     "Developer Testing" : 4,
+                                     "Manual Testing" : 3,
+                                     "UAT" : 2,
+                                     "Production" : 1}}
 inputDF.replace(cleanup_nums, inplace=True)
 
-# 2 Internal Priority
-cleanup_nums = {'Internal Priority':{np.nan: 0,
-                                     "4- Not required in Release" : 1,
-                                     "3- If time Include in Release" : 2,
-                                     "2- Before Final Release" : 3,
-                                     "1- Blocker ASAP" : 4}}
+# 2 Internal Priority - Numeric
+cleanup_nums = {'Internal Priority':{np.nan: 5,
+                                     "4- Not required in Release" : 4,
+                                     "3- If time Include in Release" : 3,
+                                     "2- Before Final Release" : 2,
+                                     "1- Blocker ASAP" : 1}}
 inputDF.replace(cleanup_nums, inplace=True)
 
 
-# 3 Reported By Client
-cleanup_nums = {'Reported By Client':{np.nan: 0,
-                                     "No" : 0,
+# 3 Reported By Client - Numeric
+cleanup_nums = {'Reported By Client':{np.nan: 2,
+                                     "No" : 2,
                                      "Yes" : 1}}
 inputDF.replace(cleanup_nums, inplace=True)
 
-# 3b Severity
-cleanup_nums = {'Severity':{np.nan: 0,
-                                     "5- Cosmetic" : 1,
-                                     "4- Low/Minor" : 2,
+# 3b Severity - Numeric
+cleanup_nums = {'Severity':{np.nan: 6,
+                                     "5- Cosmetic" : 5,
+                                     "4- Low/Minor" : 4,
                                      "3- Medium/Moderate" : 3,
-                                     "2- High/Serious": 4,
-                                     "1- Critical/Fatal" : 5}}
+                                     "2- High/Serious": 2,
+                                     "1- Critical/Fatal" : 1}}
 inputDF.replace(cleanup_nums, inplace=True)
 
 # 4 LabelEncode Iteration Team and Iteration Release
@@ -94,14 +99,21 @@ pd.DataFrame.to_csv(inputDF, "data/bugs_LabelEncoded.csv")
 #print(bugsDF)
 #print(inputDF)
 
+# OneHodeEncode
+# onehot_encoder = OneHotEncoder(categorical_features = ['Iteration Team', 'Iteration Release'])
+# inputDF = onehot_encoder.fit_transform(inputDF).toarray()
+# pd.DataFrame.to_csv(inputDF, "data/bugs_OneHotEncoded.csv")
+# exit(0)
+
+# Split Train/Test Data
 trainDF = inputDF[np.logical_and(inputDF['Train Data'] == 1, inputDF['Test Data'] == 0)].drop(['Train Data', 'Test Data', 'To Delete'], axis=1)
 testDF  = inputDF[np.logical_and(inputDF['Train Data'] == 0, inputDF['Test Data'] == 1)].drop(['Train Data', 'Test Data', 'To Delete'], axis=1)
 
 # Assign Features & Targets
 features = trainDF.loc[:, "How Found":"Target Clients"]
 targets = trainDF["ResolutionDays"]
-#print(features)
-#print(targets)
+print(features)
+print(targets)
 
 def AddCorrelations(df):
     f, ax = plt.subplots(figsize=(10, 8))
@@ -135,6 +147,13 @@ AddScatter(trainDF, "Internal Priority", 1)
 AddScatter(trainDF, "Severity", 2)
 AddScatter(trainDF, "Target Clients", 3)
 AddScatter(trainDF, "Root Cause", 4)
-plt.show()
+# plt.show()
 
+model = LinearRegression()
+#model = DecisionTreeRegressor()
+actual_targets = targets
+predicted_targets = cross_validation.cross_val_predict(model, features, targets, cv=10)
+meanError = math.sqrt(metrics.mean_squared_error(actual_targets, predicted_targets))
 
+print("Actual Targets Summary", actual_targets.describe())
+print("Mean Error: ", meanError)
